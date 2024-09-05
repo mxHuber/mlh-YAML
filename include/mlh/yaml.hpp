@@ -116,9 +116,6 @@ enum class YamlTokens {
   // Misc indicators:
   //
 
-  // ' #'
-  ThrowAwayCommentIndicator,
-
   // '`@'
   BothReservedForFutureUse,
 
@@ -156,7 +153,7 @@ enum class YamlTokens {
   OMap,
 
   //
-  // Language Indipendent Scalar types
+  // Language Independent Scalar types
   //
 
   // { ~, null }
@@ -203,9 +200,8 @@ enum class YamlTokens {
   // Additional tokens:
   //
 
-  // '#'  : Comment, that starts with the # character anywhere 
-  //        on a line and ends with the end of the line
-  Comment,
+  // '\n'  : Newline
+  Newline,
 
   // ' '  : If at the start of a line and part of a list, it is an indentation
   //        (TODO: double check when whitespaces count as meaningful indentation)
@@ -223,8 +219,8 @@ enum class ASTElements {
 class YamlAST {
 public:
   YamlAST(std::vector<YamlTokens>);
-  bool isValid();
-  void print();
+  bool isValid(); // TODO: implement
+  void print(); // TODO: implement
 private:
   // TODO: implement Abstract Syntax Tree
 };
@@ -247,17 +243,13 @@ public:
     }
 
     Yaml NewYaml = Yaml();
-    NewYaml.setContent(Container);
+    NewYaml.Content = Container;
 
     return NewYaml;
   }
 
-  inline void setContent(const std::string &Str) { Content = Str; }
-
-  inline std::string getContent() { return Content; }
-
-private:
   std::string Content = "";
+private:
  
   //
   // Functions for parsing
@@ -326,7 +318,267 @@ private:
   }
 
   static void tokenizeDocument(const std::string &Str, std::vector<YamlTokens> &TokenContainer) {
+    // Not yet implemented tokens:
+    // - Primary  : '!foo'
+    // Reason: If any string can be after the !, what ends the tag property?
+    //         I'd assume a whitespace, but double check to be sure.
+    // - Secondary  : '!!foo'
+    // Reason: See Primary reason
+    // - Requires  : '!h!foo'
+    // Reason: See Primary reason
+    // - VerbatimTag  : '!<foo>'
+    // Reason: See Primary reason
+    // - Int  : [ 1234, 0x4D2, 02333 ]
+    // Reason: What ends an int? I'd assume a whitespace, but double check to be sure.
+    // - Float  : [ 1_230.15, 12.3015e+02 ]
+    // Reason: See Int
+    // - InfOrNAN  : [ .inf, -.Inf, .NAN ]
+    // Reason: Does any variation of the characters i, n and f count? Does iNF count?
+    //         Also, like Int and such, what ends this tag?
+    // - BooleanTrue  : { Y, true, Yes, ON  }
+    // Reason: See InfOrNAN
+    // - BooleanFalse  : { n, FALSE, No, off }
+    // Reason: See InfOrNAN
+    // - Base64BinaryValue
+    // Reason: See InfOrNAN
+    // - Numeric
+    // Reason: See InfOrNAN
+    // - Protective
+    // Reason: See InfOrNAN
+    // - C
+    // Reason: See InfOrNAN
+    // - Additional
+    // Reason: See InfOrNAN
 
+    // Removed tokens:
+    // - ' #' : Throwaway comment indicator.
+    // Reason: Given that comments will be ignored, this token would be useless
+    //         A bool to ignore comment content is used instead.
+    
+    std::string PreviousChars = "";
+    bool isComment = false;
+
+    for (const char CurrChar : Str) {
+      // End of comment
+      if (isComment && CurrChar == '\n') {
+        TokenContainer.push_back(YamlTokens::Newline);
+        isComment = false;
+        continue;
+      }
+
+      // Comment continuation
+      if (isComment) {
+        continue;
+      }
+      
+      // Check for single char tokens
+      if (PreviousChars.empty()) {
+        if (CurrChar == '"') {
+          TokenContainer.push_back(YamlTokens::SurroundInLineEscapedScalar);
+          continue;
+        }
+
+        if (CurrChar == '|') {
+          TokenContainer.push_back(YamlTokens::BlockScalarIndicator);
+          continue;
+        }
+
+        if (CurrChar == '>') {
+          TokenContainer.push_back(YamlTokens::FoldedScalarIndicator);
+          continue;
+        }
+
+        if (CurrChar == '-') {
+          TokenContainer.push_back(YamlTokens::StripChompModifier);
+          continue;
+        }
+
+        if (CurrChar == '&') {
+          TokenContainer.push_back(YamlTokens::AnchorProperty);
+          continue;
+        }
+
+        if (CurrChar == '*') {
+          TokenContainer.push_back(YamlTokens::AliasIndicator);
+          continue;
+        }
+
+        if (CurrChar == '!') {
+          TokenContainer.push_back(YamlTokens::NonSpecificTag);
+          continue;
+        }
+
+        if (CurrChar == '%') {
+          TokenContainer.push_back(YamlTokens::DirectiveIndicator);
+          continue;
+        }
+
+        if (CurrChar == '=') {
+          TokenContainer.push_back(YamlTokens::DefaultValueMappingKey);
+          continue;
+        }
+
+        // Character behind the hashtag and the hashtag will be ignored
+        // until the next newline character
+        if (CurrChar == '#') {
+          isComment = true;
+          continue;
+        }
+
+        if (CurrChar == '\n') {
+          TokenContainer.push_back(YamlTokens::Newline);
+          continue;
+        }
+
+        if (CurrChar == ' ') {
+          TokenContainer.push_back(YamlTokens::WhiteSpaceIndentation);
+          continue;
+        }
+
+        if (CurrChar == '\t') {
+          TokenContainer.push_back(YamlTokens::TabIndentation);
+          continue;
+        }
+
+        if (CurrChar == '~') {
+          TokenContainer.push_back(YamlTokens::Null);
+          continue;
+        }
+      }
+
+      if (PreviousChars == "?" && CurrChar == ' ') {
+        TokenContainer.push_back(YamlTokens::KeyIndicator);
+        TokenContainer.clear();
+        continue;
+      }
+
+      if (PreviousChars == ":" && CurrChar == ' ') {
+        TokenContainer.push_back(YamlTokens::ValueIndicator);
+        TokenContainer.clear();
+        continue;
+      }
+
+      if (PreviousChars == "-" && CurrChar == ' ') {
+        TokenContainer.push_back(YamlTokens::NestedSeriesEntryIndicator);
+        TokenContainer.clear();
+        continue;
+      }
+
+      if (PreviousChars == "," && CurrChar == ' ') {
+        TokenContainer.push_back(YamlTokens::SeperateInLineBranchEntries);
+        TokenContainer.clear();
+        continue;
+      }
+
+      // TODO: check if this is correct, or if there could be content between the brackets
+      if (PreviousChars == "[" && CurrChar == ']') {
+        TokenContainer.push_back(YamlTokens::SurroundInLineSeriesBranch);
+        TokenContainer.clear();
+        continue;
+      }
+
+      // TODO: check if this is correct, or if there could be content between the brackets
+      if (PreviousChars == "{" && CurrChar == '}') {
+        TokenContainer.push_back(YamlTokens::SurroundInLineKeyedBranch);
+        TokenContainer.clear();
+        continue;
+      }
+
+      // TODO: check if this is correct, or if there could be content between the ''s
+      if (PreviousChars == "'" && CurrChar == '\'') {
+        TokenContainer.push_back(YamlTokens::SurroundInLineKeyedBranch);
+        TokenContainer.clear();
+        continue;
+      }
+
+      // TODO: check if -, + or 1-9 could be a modifier on their own.
+      //       I found this to be unclear in the documentation at:
+      //       https://yaml.org/refcard.html
+      if (PreviousChars == "|" && CurrChar == '-' || PreviousChars == ">" && CurrChar == '-') {
+        TokenContainer.push_back(YamlTokens::StripChompModifier);
+        TokenContainer.clear();
+        continue;
+      }
+
+      if (PreviousChars == "|" && CurrChar == '+' || PreviousChars == ">" && CurrChar == '+') {
+        TokenContainer.push_back(YamlTokens::KeepChompModifier);
+        TokenContainer.clear();
+        continue;
+      }
+
+      if (PreviousChars == "|" && (CurrChar == '1' || CurrChar == '2' || CurrChar == '3'
+                                || CurrChar == '4' || CurrChar == '5' || CurrChar == '6'
+                                || CurrChar == '7' || CurrChar == '8' || CurrChar == '9')
+       || PreviousChars == ">" && (CurrChar == '1' || CurrChar == '2' || CurrChar == '3'
+                                || CurrChar == '4' || CurrChar == '5' || CurrChar == '6'
+                                || CurrChar == '7' || CurrChar == '8' || CurrChar == '9')) {
+        TokenContainer.push_back(YamlTokens::ExplicitIndentationModifier);
+        TokenContainer.clear();
+        continue;
+      }
+
+      if (PreviousChars == "non" && CurrChar == 'e') {
+        TokenContainer.push_back(YamlTokens::UnspecifiedTag);
+        TokenContainer.clear();
+        continue;
+      }
+
+      if (PreviousChars == ".." && CurrChar == '.') {
+        TokenContainer.push_back(YamlTokens::DocumentTerminator);
+        TokenContainer.clear();
+        continue;
+      }
+
+      if (PreviousChars == "`" && CurrChar == '@') {
+        TokenContainer.push_back(YamlTokens::BothReservedForFutureUse);
+        TokenContainer.clear();
+        continue;
+      }
+
+      if (PreviousChars == "<" && CurrChar == '<') {
+        TokenContainer.push_back(YamlTokens::MergeKeysFromAnotherMapping);
+        TokenContainer.clear();
+        continue;
+      }
+
+      if (PreviousChars == "!!ma" && CurrChar == 'p') {
+        TokenContainer.push_back(YamlTokens::Map);
+        TokenContainer.clear();
+        continue;
+      }
+
+      if (PreviousChars == "!!se" && CurrChar == 'q') {
+        TokenContainer.push_back(YamlTokens::Seq);
+        TokenContainer.clear();
+        continue;
+      }
+
+      if (PreviousChars == "!!st" && CurrChar == 'r') {
+        TokenContainer.push_back(YamlTokens::UnicodeString);
+        TokenContainer.clear();
+        continue;
+      }
+
+      if (PreviousChars == "!!se" && CurrChar == 't') {
+        TokenContainer.push_back(YamlTokens::Set);
+        TokenContainer.clear();
+        continue;
+      }
+
+      if (PreviousChars == "!!oma" && CurrChar == 'p') {
+        TokenContainer.push_back(YamlTokens::OMap);
+        TokenContainer.clear();
+        continue;
+      }
+
+      if (PreviousChars == "nul" && CurrChar == 'l') {
+        TokenContainer.push_back(YamlTokens::Null);
+        TokenContainer.clear();
+        continue;
+      }
+
+      PreviousChars.push_back(CurrChar);
+    }
   }
 
   static bool parseString(const std::string &Str, bool PrintASTs) {
