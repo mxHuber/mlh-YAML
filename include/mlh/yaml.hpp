@@ -212,31 +212,20 @@ enum class YamlTokens {
   TabIndentation,
 };
 
-enum class ASTElements {
-  // TODO:
-};
 
-class YamlAST {
-public:
-  YamlAST(std::vector<YamlTokens>);
-  bool isValid(); // TODO: implement
-  void print(); // TODO: implement
-private:
-  // TODO: implement Abstract Syntax Tree
-};
 
 class Yaml {
 public:
   Yaml() = default;
 
-  static Yaml parse(std::ifstream &InputStream, bool PrintASTs = false) {
+  static Yaml parse(std::ifstream &InputStream) {
     assert(InputStream.is_open());
 
     std::string Container = "";
 
     readStream(InputStream, Container);
 
-    bool Valid = parseString(Container, PrintASTs);
+    bool Valid = parseString(Container);
 
     if (!Valid) {
       std::cerr << "YAML file is not valid!" <<  std::endl;
@@ -250,7 +239,6 @@ public:
 
   std::string Content = "";
 private:
- 
   //
   // Functions for parsing
   //
@@ -581,24 +569,98 @@ private:
     }
   }
 
-  static bool parseString(const std::string &Str, bool PrintASTs) {
+static bool isValid(const std::vector<YamlTokens> &Tokens) {
+    bool IsValid = true;
+    bool TrackIndentation = true;
+    size_t WhiteSpaceIndents = 0;
+    size_t TabIndents = 0;
+
+    // TODO: add the rest of the invalid yaml conditions
+    for (const auto &Token : Tokens) {
+      if (!IsValid) {
+        break;
+      }
+
+      switch (Token) {
+      case YamlTokens::ValueIndicator:
+        WhiteSpaceIndents = 0;
+        TabIndents = 0;
+        TrackIndentation = true;
+        break;
+      case YamlTokens::WhiteSpaceIndentation:
+        WhiteSpaceIndents++;
+      case YamlTokens::TabIndentation:
+        if (WhiteSpaceIndents) {
+          IsValid = false;
+        }
+        break;
+      case YamlTokens::KeyIndicator:
+      case YamlTokens::NestedSeriesEntryIndicator:
+      case YamlTokens::SeperateInLineBranchEntries:
+      case YamlTokens::SurroundInLineSeriesBranch:
+      case YamlTokens::SurroundInLineKeyedBranch:
+      case YamlTokens::SurroundInLineUnescapedScalar:
+      case YamlTokens::SurroundInLineEscapedScalar:
+      case YamlTokens::BlockScalarIndicator:
+      case YamlTokens::FoldedScalarIndicator:
+      case YamlTokens::StripChompModifier:
+      case YamlTokens::KeepChompModifier:
+      case YamlTokens::ExplicitIndentationModifier:
+      case YamlTokens::AnchorProperty:
+      case YamlTokens::AliasIndicator:
+      case YamlTokens::UnspecifiedTag:
+      case YamlTokens::NonSpecificTag:
+      case YamlTokens::Primary:
+      case YamlTokens::Secondary:
+      case YamlTokens::Requires:
+      case YamlTokens::VerbatimTag:
+      case YamlTokens::DirectiveIndicator:
+      case YamlTokens::DocumentHeader:
+      case YamlTokens::DocumentTerminator:
+      case YamlTokens::BothReservedForFutureUse:
+      case YamlTokens::DefaultValueMappingKey:
+      case YamlTokens::MergeKeysFromAnotherMapping:
+      case YamlTokens::Map:
+      case YamlTokens::Seq:
+      case YamlTokens::UnicodeString:
+      case YamlTokens::Set:
+      case YamlTokens::OMap:
+      case YamlTokens::Null:
+      case YamlTokens::Int:
+      case YamlTokens::Float:
+      case YamlTokens::InfOrNAN:
+      case YamlTokens::BooleanTrue:
+      case YamlTokens::BooleanFalse:
+      case YamlTokens::Base64BinaryValue:
+      case YamlTokens::Numeric:
+      case YamlTokens::Protective:
+      case YamlTokens::C:
+      case YamlTokens::Additional:
+      case YamlTokens::Newline:
+      default:
+        break;
+      }
+    }
+
+    return IsValid;
+  }
+
+  static bool parseString(const std::string &Str) {
     std::vector<std::string> Documents(getNumberOfDocumentHeaders(Str));
     splitStringByDocumentHeaders(Str, Documents);
 
     bool Valid = true;
 
+    size_t Counter = 0;
     for (const auto &Doc : Documents) {
       std::vector<YamlTokens> Tokens;
       tokenizeDocument(Doc, Tokens);
 
-      YamlAST CurrDocAST(Tokens);
-      if (!CurrDocAST.isValid()) {
+      if (!isValid(Tokens)) {
+        std::cerr << "YAML document " << Counter << " is not valid!" <<  std::endl;
         Valid = false;
       }
-
-      if (PrintASTs) {
-        CurrDocAST.print();
-      }
+      Counter++;
     }
 
     return Valid;
